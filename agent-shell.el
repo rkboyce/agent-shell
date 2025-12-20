@@ -166,7 +166,7 @@ wrapped with the runner prefix."
                      :environment-variables environment-variables
                      :context-buffer context-buffer)))
 
-(defcustom agent-shell-text-file-capabilities t
+(defcustom agent-shell-text-file-capabilities nil
   "Whether agents are initialized with read/write text file capabilities.
 
 See `acp-make-initialize-request' for details."
