@@ -166,7 +166,7 @@ wrapped with the runner prefix."
                      :environment-variables environment-variables
                      :context-buffer context-buffer)))
 
-(defcustom agent-shell-text-file-capabilities t
+(defcustom agent-shell-text-file-capabilities nil
   "Whether agents are initialized with read/write text file capabilities.
 
 See `acp-make-initialize-request' for details."
@@ -183,6 +183,33 @@ See `display-buffer' for the format of display actions."
 (defcustom agent-shell-file-completion-enabled nil
   "Non-nil automatically enables file completion when starting shells."
   :type 'boolean
+  :group 'agent-shell)
+
+(defcustom agent-shell-summary-storage-enabled t
+  "When non-nil, allow saving and reusing brief session summaries per project."
+  :type 'boolean
+  :group 'agent-shell)
+
+(defcustom agent-shell-summary-directory
+  (file-name-concat (or (getenv "CODEX_HOME") (expand-file-name "~/.codex")) "session-summaries")
+  "Directory where agent-shell stores session summaries."
+  :type 'directory
+  :group 'agent-shell)
+
+(defcustom agent-shell-summary-max-entries 10
+  "Maximum summaries to keep per project."
+  :type 'integer
+  :group 'agent-shell)
+
+(defcustom agent-shell-summary-max-age-days 30
+  "Prune summaries older than this many days."
+  :type 'integer
+  :group 'agent-shell)
+
+(defcustom agent-shell-summary-prompt
+  "Summarize the current session for future continuation. Focus on: (1) user goal/use case, (2) key technical details (files, branches, tools, commands, models), (3) next-step suggestions. Keep it concise (6-10 sentences)."
+  "Prompt sent to Codex to generate a session summary."
+  :type 'string
   :group 'agent-shell)
 
 (defcustom agent-shell-prefer-viewport-interaction nil
@@ -375,7 +402,177 @@ HEARTBEAT, and AUTHENTICATE-REQUEST-MAKER."
 (defvar-local agent-shell--transcript-file nil
   "Path to the shell's transcript file.")
 
+(defvar agent-shell--summary-cache nil
+  "In-memory cache of session summaries keyed by project root.")
+
 (defvar agent-shell--shell-maker-config nil)
+
+;; Summary helpers
+(defun agent-shell--project-root ()
+  "Return the project root or default-directory if unknown."
+  (or (when (fboundp 'project-current)
+        (when-let ((proj (project-current nil)))
+          (project-root proj)))
+      default-directory))
+
+(defun agent-shell--summary-dir-for-project ()
+  "Return directory for storing summaries for the current project."
+  (let* ((root (file-name-as-directory (expand-file-name (agent-shell--project-root))))
+         (hash (md5 root)))
+    (file-name-concat agent-shell-summary-directory hash)))
+
+(defun agent-shell--read-summaries ()
+  "Load summaries for current project from disk, caching them."
+  (or (cdr (assoc (agent-shell--project-root) agent-shell--summary-cache))
+      (let* ((dir (agent-shell--summary-dir-for-project))
+             (files (when (file-directory-p dir)
+                      (directory-files dir t "^[^.].*\.summary$")))
+             (entries (delq nil
+                            (mapcar (lambda (f)
+                                      (condition-case _
+                                          (with-temp-buffer
+                                            (insert-file-contents f)
+                                            (goto-char (point-min))
+                                            (read (current-buffer)))
+                                        (error nil)))
+                                    files))))
+        (push (cons (agent-shell--project-root) entries) agent-shell--summary-cache)
+        entries)))
+
+(defun agent-shell--prune-summaries ()
+  "Prune old or excess summaries for current project.";
+  (let* ((dir (agent-shell--summary-dir-for-project))
+         (entries (agent-shell--read-summaries))
+         (max agent-shell-summary-max-entries)
+         (cutoff (- (float-time) (* agent-shell-summary-max-age-days 86400))))
+    (when (and dir entries)
+      (let* ((sorted (seq-sort-by (lambda (e) (plist-get e :timestamp)) #'> entries))
+             (kept (seq-take sorted max))
+             (pruned (seq-drop sorted max))
+             (pruned (append pruned (seq-filter (lambda (e)
+                                                  (< (plist-get e :timestamp) cutoff))
+                                                kept))))
+        (dolist (e pruned)
+          (when-let ((file (plist-get e :file)))
+            (ignore-errors (delete-file file)))))))
+
+(defun agent-shell--write-summary (text)
+  "Write TEXT as a summary entry for the current project.";
+  (when agent-shell-summary-storage-enabled
+    (let* ((dir (agent-shell--summary-dir-for-project))
+           (ts (float-time))
+           (file (file-name-concat dir (format "%s.summary" (format-time-string "%Y%m%d%H%M%S"))))
+           (entry (list :project (agent-shell--project-root)
+                        :cwd default-directory
+                        :timestamp ts
+                        :model (map-nested-elt (agent-shell--state) '(:session :model-id))
+                        :summary text
+                        :file file)))
+      (make-directory dir t)
+      ;; Restrictive perms
+      (set-file-modes dir #o700)
+      (with-temp-file file
+        (let ((print-level nil) (print-length nil))
+          (prin1 entry (current-buffer))))
+      (set-file-modes file #o600)
+      ;; refresh cache and prune
+      (setq agent-shell--summary-cache (assq-delete-all (agent-shell--project-root) agent-shell--summary-cache))
+      (agent-shell--prune-summaries)
+      entry)))
+
+(defun agent-shell-save-summary ()
+  "Generate or enter a session summary and save it for this project.
+
+By default, uses `agent-shell-summary-prompt' to ask the agent for a concise
+summary. With prefix arg, prompt for manual text instead."
+  (interactive)
+  (let ((manual (prefix-numeric-value current-prefix-arg)))
+    (if manual
+        (let ((text (read-string "Summary: ")))
+          (unless (string-empty-p (string-trim text))
+            (agent-shell--write-summary text)
+            (message "Summary saved.")))
+      (agent-shell--generate-summary-via-agent))))
+
+(defun agent-shell--summaries-for-display ()
+  (mapcar (lambda (e)
+            (let ((ts (plist-get e :timestamp)))
+              (cons (format "%s | model=%s | cwd=%s | %s"
+                            (format-time-string "%Y-%m-%d %H:%M" (seconds-to-time ts))
+                            (or (plist-get e :model) "unknown")
+                            (abbreviate-file-name (plist-get e :cwd))
+                            (truncate-string-to-width (or (plist-get e :summary) "") 80)))
+                    e)))
+          (agent-shell--read-summaries)))
+
+(defun agent-shell--generate-summary-via-agent ()
+  "Ask the agent to summarize the current session and save the result."
+  (unless (map-elt (agent-shell--state) :client)
+    (error "No agent client available"))
+  (let ((prompt agent-shell-summary-prompt)
+        (buffer (current-buffer))
+        (accumulator (list))
+        (session-id (or (map-nested-elt (agent-shell--state) '(:session :id))
+                        (error "No active session"))))
+    (message "Requesting summary from agent...")
+    (acp-send-request
+     :client (map-elt (agent-shell--state) :client)
+     :request (acp-make-session-prompt-request
+               :session-id session-id
+               :prompt `[((type . "text") (text . ,prompt))])
+     :buffer buffer
+     :on-notification (lambda (notif)
+                        ;; Collect agent_message_chunk text content
+                        (when (and (equal (map-elt notif 'method) "session/notification"))
+                          (let ((update (map-nested-elt notif '(params update))))
+                            (when (and update
+                                       (equal (map-elt update 'kind) "agent_message_chunk"))
+                              (let* ((content (map-elt update 'content))
+                                     (text (cond
+                                            ((and (hash-table-p content)
+                                                  (equal (gethash 'type content) "text"))
+                                             (gethash 'text content))
+                                            ((and (listp content)
+                                                  (equal (alist-get 'type content) "text"))
+                                             (alist-get 'text content)))))
+                                (when text
+                                  (push text accumulator)))))))
+     :on-success (lambda (_response)
+                   (let ((text (string-join (nreverse accumulator) "")))
+                     (if (string-empty-p (string-trim text))
+                         (message "Summary request completed but no text returned.")
+                       (agent-shell--write-summary text)
+                       (message "Summary saved via agent."))))
+     :on-error (lambda (_err)
+                 (message "Failed to generate summary via agent.")))))
+
+(defun agent-shell-list-summaries ()
+  "List available summaries for this project."
+  (interactive)
+  (let ((summaries (agent-shell--summaries-for-display)))
+    (if (null summaries)
+        (message "No summaries found for this project.")
+      (with-current-buffer (get-buffer-create "*Agent Summaries*")
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (insert "Available summaries:\n\n")
+          (dolist (s summaries)
+            (insert (car s) "\n")))
+        (special-mode)
+        (pop-to-buffer (current-buffer))))))
+
+(defun agent-shell-use-summary ()
+  "Select a saved summary and insert it into the current prompt buffer."
+  (interactive)
+  (let* ((summaries (agent-shell--summaries-for-display))
+         (choice (when summaries
+                   (completing-read "Use summary: " (mapcar #'car summaries) nil t))))
+    (if (or (null summaries) (string-empty-p choice))
+        (message "No summary selected.")
+      (let* ((entry (cdr (assoc choice summaries)))
+             (text (plist-get entry :summary)))
+        (when (and text (derived-mode-p 'agent-shell-viewport-edit-mode))
+          (insert (concat "\n\n# Prior session summary\n" text "\n")))))))
 
 ;;;###autoload
 (defun agent-shell (&optional new-shell)

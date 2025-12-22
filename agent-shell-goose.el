@@ -121,16 +121,21 @@ Uses `agent-shell-goose-authentication' for authentication configuration."
   (unless buffer
     (error "Missing required argument: :buffer"))
   (let ((api-key (agent-shell-goose-key)))
-    (agent-shell--make-acp-client :command (car agent-shell-goose-command)
-                                  :command-params (cdr agent-shell-goose-command)
-                                  :environment-variables (append (cond ((map-elt agent-shell-goose-authentication :none)
-                                                                        nil)
-                                                                       (api-key
-                                                                        (list (format "OPENAI_API_KEY=%s" api-key)))
-                                                                       (t
-                                                                        (error "Missing Goose authentication (see agent-shell-goose-authentication)")))
-                                                                 agent-shell-goose-environment)
-                                  :context-buffer buffer)))
+    (agent-shell--make-acp-client
+     :command (car agent-shell-goose-command)
+     :command-params (cdr agent-shell-goose-command)
+     :environment-variables
+     (append
+      (cond
+       ;; Explicitly clear OPENAI_API_KEY when :none is selected so we don't leak env secrets.
+       ((map-elt agent-shell-goose-authentication :none)
+        '("OPENAI_API_KEY="))
+       (api-key
+        (list (format "OPENAI_API_KEY=%s" api-key)))
+       (t
+        (error "Missing Goose authentication (see agent-shell-goose-authentication)")))
+      agent-shell-goose-environment)
+     :context-buffer buffer)))
 
 (defun agent-shell-goose-key ()
   "Get the Goose OpenAI API key."
