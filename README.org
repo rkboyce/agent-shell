@@ -370,13 +370,21 @@ Agent shell provides the =agent-shell--resolve-devcontainer-path= function for u
 
 Note that this allows the agent to access files on your local file-system. While care has been taken to restrict access to files in the local working directory, it's probably possible for a malicious agent to circumvent this restriction.
 
-Optional: to prevent the agent running inside the container to access your local file-system altogether and to have it read/modify files inside the container directly, in addition to setting the resolver function, disable the "read/write text file" client capabilities:
+Optional (and the default): keep "read/write text file" capabilities disabled so the agent cannot read or modify files via the ACP client. You can opt back in (for trusted setups) by setting:
 
 #+begin_src emacs-lisp
 (setq agent-shell-text-file-capabilities nil)
 #+end_src
 
 All of the above settings can be applied on a per-project basis using [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Directory-Variables.html][directory-local variables]].
+
+** Session summaries
+
+- `agent-shell-save-summary` will ask the agent (using `agent-shell-summary-prompt`) to generate a concise session summary and save it per project under =$CODEX_HOME/session-summaries=. Use a prefix arg to enter a manual summary instead.
+- `agent-shell-list-summaries` lists saved summaries for the current project.
+- `agent-shell-use-summary` inserts a saved summary into your compose buffer (helpful when starting a new session).
+- Customizations: `agent-shell-summary-storage-enabled`, `agent-shell-summary-directory`, `agent-shell-summary-max-entries`, `agent-shell-summary-max-age-days`, and `agent-shell-summary-prompt`.
+- Only the short summary text plus metadata (cwd/model/timestamp) is stored; transcripts remain separate under =.agent-shell/transcripts/=.
 
 ** Keybindings
 
@@ -527,7 +535,6 @@ All of the above settings can be applied on a per-project basis using [[https://
 |                 | agent-shell-save-summary                                | Generate (or manually enter) and save a short session summary.                |
 |                 | agent-shell-list-summaries                              | List saved summaries for the current project.                                 |
 |                 | agent-shell-use-summary                                 | Insert a saved summary into the current prompt buffer.                        |
-|                 | agent-shell-context-usage                               | Show the last reported context usage.                                         |
 | M-r             | agent-shell-search-history                              | Search previous input history.                                                |
 |                 | agent-shell-send-current-file                           | Insert a file into `agent-shell'.                                             |
 |                 | agent-shell-send-dwim                                   | Send region or error at point to last accessed shell buffer in project.       |
