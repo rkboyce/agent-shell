@@ -226,7 +226,9 @@ Optionally set its PROMPT and RESPONSE."
                        'face 'font-lock-doc-face)
          prompt)))
     (when response
-      (insert response))))
+      (insert response))
+    (let ((inhibit-read-only t))
+      (markdown-overlays-put))))
 
 (defun agent-shell-viewport--prompt ()
   "Return the buffer prompt."
