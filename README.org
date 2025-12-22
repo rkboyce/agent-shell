@@ -492,6 +492,10 @@ All of the above settings can be applied on a per-project basis using [[https://
 |                 | agent-shell-reset-logs                                  | Reset all log buffers.                                                        |
 |                 | agent-shell-restore-session-from-transcript             | Restore session from file transcript (or HISTORY).                            |
 | C-x C-s         | agent-shell-save-session-transcript                     | Save shell transcript to file.                                                |
+|                 | agent-shell-save-summary                                | Generate (or manually enter) and save a short session summary.                |
+|                 | agent-shell-list-summaries                              | List saved summaries for the current project.                                 |
+|                 | agent-shell-use-summary                                 | Insert a saved summary into the current prompt buffer.                        |
+|                 | agent-shell-context-usage                               | Show the last reported context usage.                                         |
 | M-r             | agent-shell-search-history                              | Search previous input history.                                                |
 |                 | agent-shell-send-current-file                           | Insert a file into `agent-shell'.                                             |
 |                 | agent-shell-send-dwim                                   | Send region or error at point to last accessed shell buffer in project.       |
