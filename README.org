@@ -21,7 +21,7 @@ Thank you!
 
 A native Emacs shell to interact with LLM agents powered by ACP ([[https://agentclientprotocol.com][Agent Client Protocol]]).
 
-With agent-shell, you can chat with the likes of Gemini CLI, Claude Code, or any other ACP-driven agent.
+With agent-shell, you can chat with the likes of Gemini CLI, Claude Code, Mistral Vibe, or any other ACP-driven agent.
 
 *Note:* This package is in the very early stages and is likely incomplete or may have some rough edges.
 
@@ -32,6 +32,10 @@ With agent-shell, you can chat with the likes of Gemini CLI, Claude Code, or any
 - [[https://github.com/cmacrae/agent-shell-sidebar][agent-shell-sidebar]]: A sidebar add-on for =agent-shell=.
 - [[https://github.com/nineluj/agent-review][agent-review]]: Code review interface for =agent-shell=.
 - [[https://github.com/ultronozm/agent-shell-attention.el][agent-shell-attention.el]]: Mode-line attention tracker for =agent-shell=.
+
+* Icons
+
+Thanks to [[https://github.com/lobehub/lobe-icons][Lobe Icons]] for the lovely icons.
 
 * Setup
 
@@ -78,6 +82,16 @@ npm install -g @qwen-code/qwen-code@latest
 #+end_src
 
 See https://github.com/QwenLM/qwen-code for details.
+
+*** Mistral Vibe
+
+For Mistral Vibe, install with:
+
+#+begin_src bash
+uv tool install mistral-vibe
+#+end_src
+
+See https://github.com/mistralai/mistral-vibe for details.
 
 ** Installation
 
@@ -273,6 +287,23 @@ For OAuth login-based authentication:
       (agent-shell-qwen-make-authentication :login t))
 #+end_src
 
+*** Mistral Vibe
+
+For API key authentication:
+
+#+begin_src emacs-lisp
+;; With string
+(setq agent-shell-mistral-authentication
+      (agent-shell-mistral-make-authentication :api-key "your-mistral-api-key-here"))
+
+;; With function (reusing the API key configured in vibe)
+(setq agent-shell-mistral-authentication
+      (agent-shell-mistral-make-authentication
+       :api-key (lambda ()
+	          (string-trim
+		   (shell-command-to-string "source ~/.vibe/.env; echo $MISTRAL_API_KEY")))))
+#+end_src
+
 *** Customizing Available Agents
 
 By default, =agent-shell= includes configurations for all supported agents (Claude Code, Gemini CLI, Codex, Goose, and Qwen Code). You can customize which agents are available through the =agent-shell-agent-configs= variable.
@@ -294,6 +325,7 @@ Start a specific agent shell session directly:
 - =M-x agent-shell-google-start-gemini= - Start a Gemini agent session
 - =M-x agent-shell-goose-start-agent= - Start a Goose agent session
 - =M-x agent-shell-cursor-start-agent= - Start a Cursor agent session
+- =M-x agent-shell-mistral-start-vibe= - Start a Mistral Vibe agent session
 - =M-x agent-shell-qwen-start= - Start a Qwen Code agent session
 
 *** Setting a default agent for all new shells
