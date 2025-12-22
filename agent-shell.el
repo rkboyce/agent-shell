@@ -4,10 +4,10 @@
 
 ;; Author: Alvaro Ramirez https://xenodium.com
 ;; URL: https://github.com/xenodium/agent-shell
-;; Version: 0.25.1
-;; Package-Requires: ((emacs "29.1") (shell-maker "0.84.4") (acp "0.8.1"))
+;; Version: 0.26.1
+;; Package-Requires: ((emacs "29.1") (shell-maker "0.84.4") (acp "0.8.2"))
 
-(defconst agent-shell--version "0.25.1")
+(defconst agent-shell--version "0.26.1")
 
 ;; This package is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -58,6 +58,7 @@
 (require 'agent-shell-diff)
 (require 'agent-shell-google)
 (require 'agent-shell-goose)
+(require 'agent-shell-mistral)
 (require 'agent-shell-openai)
 (require 'agent-shell-opencode)
 (require 'agent-shell-qwen)
@@ -278,6 +279,7 @@ Goose, Cursor, and others."
         (agent-shell-cursor-make-agent-config)
         (agent-shell-google-make-gemini-config)
         (agent-shell-goose-make-agent-config)
+        (agent-shell-mistral-make-config)
         (agent-shell-openai-make-codex-config)
         (agent-shell-opencode-make-agent-config)
         (agent-shell-qwen-make-agent-config)))
@@ -421,22 +423,37 @@ handles viewport mode detection, existing shell reuse, and project context."
                                        (error "No agent config found")))
       (if (and (not new-shell)
                (derived-mode-p 'agent-shell-mode))
-          (agent-shell-toggle)
+          (let ((text (agent-shell--relevant-text)))
+            (agent-shell-toggle)
+            (when text
+              (agent-shell--insert-to-shell-buffer :text text)))
         (if-let ((existing-shell (seq-first (agent-shell-project-buffers))))
-            (agent-shell--display-buffer existing-shell)
+            (let ((text (agent-shell--relevant-text)))
+              (agent-shell--display-buffer existing-shell)
+              (when text
+                (agent-shell--insert-to-shell-buffer :text text)))
           (if-let ((other-project-shell (seq-first (agent-shell-buffers))))
               (if (y-or-n-p "No shells in project.  Start a new one? ")
-                  (agent-shell-start :config (or config
-                                                 agent-shell-preferred-agent-config
-                                                 (agent-shell-select-config
-                                                  :prompt "Start new agent: ")
-                                                 (error "No agent config found")))
-                (agent-shell--display-buffer other-project-shell))
-            (agent-shell-start :config (or config
-                                           agent-shell-preferred-agent-config
-                                           (agent-shell-select-config
-                                            :prompt "Start new agent: ")
-                                           (error "No agent config found")))))))))
+                  (let ((text (agent-shell--relevant-text)))
+                    (agent-shell-start :config (or config
+                                                   agent-shell-preferred-agent-config
+                                                   (agent-shell-select-config
+                                                    :prompt "Start new agent: ")
+                                                   (error "No agent config found")))
+                    (when text
+                      (agent-shell--insert-to-shell-buffer :text text)))
+                (let ((text (agent-shell--relevant-text)))
+                  (agent-shell--display-buffer other-project-shell)
+                  (when text
+                    (agent-shell--insert-to-shell-buffer :text text))))
+            (let ((text (agent-shell--relevant-text)))
+              (agent-shell-start :config (or config
+                                             agent-shell-preferred-agent-config
+                                             (agent-shell-select-config
+                                              :prompt "Start new agent: ")
+                                             (error "No agent config found")))
+              (when text
+                (agent-shell--insert-to-shell-buffer :text text)))))))))
 
 ;;;###autoload
 (defun agent-shell-toggle ()
@@ -1524,8 +1541,8 @@ Set NO-FOCUS to start in background.
 Set NEW-SESSION to start a separate new session."
   (unless (version<= "0.84.4" shell-maker-version)
     (error "Please update shell-maker to version 0.84.4 or newer"))
-  (unless (version<= "0.8.1" acp-package-version)
-    (error "Please update acp.el to version 0.8.1 or newer"))
+  (unless (version<= "0.8.2" acp-package-version)
+    (error "Please update acp.el to version 0.8.2 or newer"))
   (when (boundp 'agent-shell--transcript-file-path-function)
     (user-error "'agent-shell--transcript-file-path-function is retired.
 
@@ -2434,7 +2451,15 @@ normalized server configs."
   (acp-subscribe-to-errors
    :client (map-elt state :client)
    :on-error (lambda (error)
-               (agent-shell--on-error :state state :error error)))
+               (agent-shell--update-fragment
+                :state state
+                :block-id (format "%s-notices"
+                                  (map-elt state :request-count))
+                :label-left (propertize "Notices" 'font-lock-face 'font-lock-doc-markup-face) ;;
+                :body (or (map-elt error 'message)
+                          (map-elt error 'data)
+                          "Something is up ¯\\_ (ツ)_/¯")
+                :append t)))
   (acp-subscribe-to-notifications
    :client (map-elt state :client)
    :on-notification (lambda (notification)
@@ -2657,6 +2682,12 @@ If FILE-PATH is not an image, returns nil."
                      (unless success
                        (agent-shell--display-pending-requests))
                      (funcall (map-elt shell :finish-output) t)
+                     ;; Update viewport header (longer busy)
+                     (when-let ((viewport-buffer (agent-shell-viewport--buffer
+                                                  :shell-buffer (map-elt shell :buffer)
+                                                  :existing-only t)))
+                       (with-current-buffer viewport-buffer
+                         (agent-shell-viewport--update-header)))
                      (when success
                        (agent-shell--process-pending-request))))
      :on-failure (lambda (error raw-message)
@@ -2665,7 +2696,13 @@ If FILE-PATH is not an image, returns nil."
                    (funcall (agent-shell--make-error-handler :state agent-shell--state :shell shell)
                             error raw-message)
                    (agent-shell-heartbeat-stop
-                    :heartbeat (map-elt agent-shell--state :heartbeat))))))
+                    :heartbeat (map-elt agent-shell--state :heartbeat))
+                   ;; Update viewport header (longer busy)
+                   (when-let ((viewport-buffer (agent-shell-viewport--buffer
+                                                :shell-buffer (map-elt shell :buffer)
+                                                :existing-only t)))
+                     (with-current-buffer viewport-buffer
+                       (agent-shell-viewport--update-header)))))))
 
 ;;; Projects
 
@@ -3466,8 +3503,8 @@ When NO-ERROR is non-nil, return nil and continue without error."
                                       (let ((char-start (map-elt region :char-start))
                                             (char-end (map-elt region :char-end))
                                             (max-preview-lines 5))
-                                        (if (and (line-number-at-pos char-start)
-                                                 (line-number-at-pos char-end))
+                                        (if (equal (line-number-at-pos char-start)
+                                                   (line-number-at-pos char-end))
                                             ;; Same line region? Avoid numbering.
                                             (buffer-substring char-start char-end)
                                           (agent-shell--get-numbered-region
