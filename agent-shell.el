@@ -408,6 +408,8 @@ HEARTBEAT, and AUTHENTICATE-REQUEST-MAKER."
   "In-memory cache of session summaries keyed by project root.")
 
 (defvar agent-shell--shell-maker-config nil)
+(defvar agent-shell--last-context-usage nil
+  "Last reported context usage string from the agent.")
 
 ;; Summary helpers
 (defun agent-shell--project-root ()
@@ -903,6 +905,16 @@ Flow:
     (cond ((equal .method "session/update")
            (let ((update (map-elt (map-elt notification 'params) 'update)))
              (cond
+              ((equal (map-elt update 'sessionUpdate) "context")
+               (let ((text (map-elt update 'text)))
+                 (setq agent-shell--last-context-usage text)
+                 (agent-shell--update-fragment
+                  :state state
+                  :block-id "context-usage"
+                  :label-left "Context"
+                  :body text
+                  :create-new t
+                  :navigation 'never)))
               ((equal (map-elt update 'sessionUpdate) "tool_call")
                (agent-shell--save-tool-call
                 state
@@ -963,15 +975,18 @@ Flow:
                  (agent-shell--append-transcript
                   :text (format "## Agent (%s)\n\n" (format-time-string "%F %T"))
                   :file-path agent-shell--transcript-file))
-               (let-alist update
-                 (agent-shell--append-transcript
-                  :text .content.text
-                  :file-path agent-shell--transcript-file)
-                 (agent-shell--update-fragment
-                  :state state
-                  :block-id (format "%s-agent_message_chunk"
-                                    (map-elt state :chunked-group-count))
-                  :body .content.text
+              (let-alist update
+                (agent-shell--append-transcript
+                 :text .content.text
+                 :file-path agent-shell--transcript-file)
+                (when (and (stringp .content.text)
+                           (string-prefix-p "Context usage:" .content.text))
+                  (setq agent-shell--last-context-usage .content.text))
+                (agent-shell--update-fragment
+                 :state state
+                 :block-id (format "%s-agent_message_chunk"
+                                   (map-elt state :chunked-group-count))
+                 :body .content.text
                   :create-new (not (equal (map-elt state :last-entry-type)
                                           "agent_message_chunk"))
                   :append t
@@ -4267,6 +4282,13 @@ Includes STATUS, TITLE, KIND, DESCRIPTION, COMMAND, and OUTPUT."
   (unless (file-exists-p agent-shell--transcript-file)
     (error "Transcript file does not exist: %s" agent-shell--transcript-file))
   (find-file agent-shell--transcript-file))
+
+(defun agent-shell-context-usage ()
+  "Show the last reported context usage."
+  (interactive)
+  (if agent-shell--last-context-usage
+      (message "%s" agent-shell--last-context-usage)
+    (message "No context usage reported yet.")))
 
 ;;; Queueing
 
