@@ -172,10 +172,11 @@ Uses `agent-shell-openai-authentication' for authentication configuration."
 (defun agent-shell-openai--codex-welcome-message (config)
   "Return Codex welcome message using `shell-maker' CONFIG."
   (let ((art (agent-shell--indent-string 4 (agent-shell-openai--codex-ascii-art)))
-        (message (string-trim-left (shell-maker-welcome-message config) "\n")))
+        (message (string-trim-left (shell-maker-welcome-message config) "\n"))
+	)
     (concat "\n\n"
             art
-            "\n\n"
+	    "\n\n"
             message)))
 
 (defun agent-shell-openai--codex-ascii-art ()
@@ -188,10 +189,10 @@ From https://github.com/openai/codex/blob/main/codex-rs/tui/frames/slug/frame_1.
     tepetppgde   egpegxoxeet
    cpdoppttd            5pecet
   odc5pdeoeoo            g-eoot
- xp te  ep5ceet           p-oeet
-tdg-p    poep5ged          g e5e
-eedee     t55ecep            gee
-eoxpe    ceedoeg-xttttttdtt og e
+ xp te  ep5ceet           p-oeet     /status - show current session configuration
+tdg-p    poep5ged          g e5e     /approvals - choose what Codex can do without approval
+eedee     t55ecep            gee     /model - choose what model and reasoning effort to use
+eoxpe    ceedoeg-xttttttdtt og e     /review - review any changes and find issues
  dxcp  dcte 5p egeddd-cttte5t5te
  oddgd dot-5e   edpppp dpg5tcd5
   pdt gt e              tp5pde
