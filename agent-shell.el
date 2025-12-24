@@ -1,4 +1,4 @@
-;;; agent-shell.el --- A single native shell experience to interact with agentic providers (Claude Code, Cursor, Gemini CLI, Goose, Codex, OpenCode, Qwen, etc.)  -*- lexical-binding: t; -*-
+;;; agent-shell.el --- Native agentic integrations for Claude Code, Gemini CLI, etc.  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2024 Alvaro Ramirez
 
@@ -832,7 +832,7 @@ Flow:
               ;; TODO: Make public in shell-maker.
               (shell-maker--current-request-id))
     (cond ((not (map-elt (agent-shell--state) :client))
-           (when-let ((_ (map-elt shell :buffer))
+           (when-let (((map-elt shell :buffer))
                       (viewport-buffer (agent-shell-viewport--buffer
                                         :shell-buffer (map-elt shell :buffer)
                                         :existing-only t)))
@@ -1139,7 +1139,7 @@ Flow:
             :expanded t
             :navigation 'never)
            (agent-shell-jump-to-latest-permission-button-row)
-           (when-let ((_ (map-elt state :buffer))
+           (when-let (((map-elt state :buffer))
                       (viewport-buffer (agent-shell-viewport--buffer
                                         :shell-buffer (map-elt state :buffer)
                                         :existing-only t)))
@@ -1440,7 +1440,7 @@ Returns in the form:
 
 DIFF should be in the form returned by `agent-shell--make-diff-info':
   ((:old . old-text) (:new . new-text) (:file . file-path))"
-  (when-let ((_ diff)
+  (when-let (diff
              (old-file (make-temp-file "old"))
              (new-file (make-temp-file "new")))
     (unwind-protect
@@ -1556,7 +1556,7 @@ For example, shut down ACP client."
     (acp-shutdown :client (map-elt (agent-shell--state) :client)))
   (agent-shell-heartbeat-stop
    :heartbeat (map-elt (agent-shell--state) :heartbeat))
-  (when-let ((_ (map-elt (agent-shell--state) :buffer))
+  (when-let (((map-elt (agent-shell--state) :buffer))
              (viewport-buffer (agent-shell-viewport--buffer
                                :shell-buffer (map-elt (agent-shell--state) :buffer)
                                :existing-only t))
@@ -1744,7 +1744,7 @@ Set NEW-SESSION to start a separate new session."
     (user-error "'agent-shell--transcript-file-path-function is retired.
 
 Please use 'agent-shell-transcript-file-path-function and unbind old
-variable (see makunbound)."))
+variable (see makunbound)"))
   (with-temp-buffer ;; client-maker needs a buffer (use a temp one)
     (unless (and (map-elt config :client-maker)
                  (funcall (map-elt config :client-maker) (current-buffer)))
@@ -1781,7 +1781,7 @@ variable (see makunbound)."))
                                                     (when-let* ((viewport-buffer (agent-shell-viewport--buffer
                                                                                   :shell-buffer shell-buffer
                                                                                   :existing-only t))
-                                                                (_ (get-buffer-window viewport-buffer)))
+                                                                ((get-buffer-window viewport-buffer)))
                                                       (with-current-buffer viewport-buffer
                                                         (agent-shell-viewport--update-header)))))
                                       :client-maker (map-elt config :client-maker)
@@ -1814,7 +1814,7 @@ variable (see makunbound)."))
 
 (cl-defun agent-shell--delete-fragment (&key state block-id)
   "Delete fragment with STATE and BLOCK-ID."
-  (when-let ((_ (map-elt state :buffer))
+  (when-let (((map-elt state :buffer))
              (viewport-buffer (agent-shell-viewport--buffer
                                :shell-buffer (map-elt state :buffer)
                                :existing-only t)))
@@ -1838,7 +1838,7 @@ Dialog can have LABEL-LEFT, LABEL-RIGHT, and BODY.
 Optional flags: APPEND text to existing content, CREATE-NEW block,
 NAVIGATION for navigation style, EXPANDED to show block expanded
 by default."
-  (when-let ((_ (map-elt state :buffer))
+  (when-let (((map-elt state :buffer))
              (viewport-buffer (agent-shell-viewport--buffer
                                :shell-buffer (map-elt state :buffer)
                                :existing-only t)))
@@ -2632,13 +2632,13 @@ normalized server configs."
            (mapcar (lambda (server)
                      (let ((normalized (copy-alist server)))
                        (when-let ((args (map-elt normalized 'args))
-                                  (_ (listp args)))
+                                  ((listp args)))
                          (map-put! normalized 'args (apply #'vector args)))
                        (when-let ((env (map-elt normalized 'env))
-                                  (_ (listp env)))
+                                  ((listp env)))
                          (map-put! normalized 'env (apply #'vector env)))
                        (when-let ((headers (map-elt normalized 'headers))
-                                  (_ (listp headers)))
+                                  ((listp headers)))
                          (map-put! normalized 'headers (apply #'vector headers)))
                        normalized))
                    agent-shell-mcp-servers))))
@@ -2789,7 +2789,7 @@ Returns an alist with:
 
 MAX-WIDTH specifies the maximum width in pixels for the image (default 200).
 If FILE-PATH is not an image, returns nil."
-  (when-let* ((_ (display-graphic-p))
+  (when-let* (((display-graphic-p))
               (metadata (agent-shell--read-file-content :file-path file-path :shallow t))
               (mime-type (map-elt metadata :mime-type))
               ;; Check if it's an image type
@@ -2840,7 +2840,7 @@ If FILE-PATH is not an image, returns nil."
                    prompt)
      :file-path agent-shell--transcript-file)
 
-    (when-let ((_ (map-elt shell :buffer))
+    (when-let (((map-elt shell :buffer))
                (viewport-buffer (agent-shell-viewport--buffer
                                  :shell-buffer (map-elt shell :buffer)
                                  :existing-only t)))
@@ -4180,8 +4180,7 @@ Mark model using CURRENT-MODEL-ID."
     ("C" "Interrupt" agent-shell-interrupt :transient t)]
    ["Shell"
     ("b" "Toggle" agent-shell-toggle :transient t)
-    ("N" "New shell" (lambda ()
-                       (interactive) (agent-shell t)))]])
+    ("N" "New shell" agent-shell-new-shell)]])
 
 ;;; Transcript
 
@@ -4391,7 +4390,8 @@ or select a specific request to remove."
             (selection (cdr (assoc (completing-read "Remove: " choices nil t) choices))))
        (list (unless (eq selection 'remove-all) selection)))))
   (if remove-index
-      (when-let* ((confirmed (y-or-n-p (format "Remove? \"%s\""
+      (when-let* ((message "Remove? \"%s\"")
+                  (confirmed (y-or-n-p (format message
                                                (nth remove-index
                                                     (map-elt agent-shell--state :pending-requests)))))
                   (pending (map-elt agent-shell--state :pending-requests))
@@ -4400,7 +4400,7 @@ or select a specific request to remove."
         (map-put! agent-shell--state :pending-requests new-pending)
         (message "Removed (%d remaining)"
                  (length new-pending)))
-    (when (y-or-n-p (format "Remove %d pending requests? "
+    (when (y-or-n-p (format "Remove %d pending requests?"
                             (length (map-elt agent-shell--state :pending-requests))))
       (map-put! agent-shell--state :pending-requests nil)
       (message "Removed all pending requests"))))
