@@ -44,6 +44,7 @@
   (require 'cl-lib))
 (require 'dired)
 (require 'json)
+(require 'image)
 (require 'map)
 (unless (require 'markdown-overlays nil 'noerror)
   (error "Please update 'shell-maker' to v0.84.4 or newer"))
@@ -980,7 +981,7 @@ Flow:
                  :text .content.text
                  :file-path agent-shell--transcript-file)
                 (when (and (stringp .content.text)
-                           (string-prefix-p "Context usage:" .content.text))
+                           (string-prefix-p "\nContext usage:" .content.text))
                   (setq agent-shell--last-context-usage .content.text))
                 (agent-shell--update-fragment
                  :state state
